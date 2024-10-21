@@ -103,21 +103,26 @@ double lab1(const int* argc, char*** argv)
 		}
 		#endif // DEBUG
 
+		uint16_t iterator = 0;
 		uint64_t length = end - start;
 		double timeProcStart = MPI_Wtime();
 		for (divider = start; divider < end && isSimple; divider++)
 		{
-			MPI_Iprobe(MASTER, TAG_MSG, MPI_COMM_WORLD, &inMsg, &status);
-			if (inMsg == 1)
+			if (iterator >= ITERATION_CHECK)
 			{
-				MPI_Recv(&isSimple, 1, MPI_INT, MASTER, TAG_MSG, MPI_COMM_WORLD, &status);
-				#ifdef DEBUG
+				iterator = 0;
+				MPI_Iprobe(MASTER, TAG_MSG, MPI_COMM_WORLD, &inMsg, &status);
+				if (inMsg == 1)
 				{
-					sprintf_s(msg, "Aborting!");
-					MPI_Send(&msg, BUFSIZE, MPI_CHAR, MASTER, TAG_MSG, MPI_COMM_WORLD);
+					MPI_Recv(&isSimple, 1, MPI_INT, MASTER, TAG_MSG, MPI_COMM_WORLD, &status);
+					#ifdef DEBUG
+					{
+						sprintf_s(msg, "Aborting!");
+						MPI_Send(&msg, BUFSIZE, MPI_CHAR, MASTER, TAG_MSG, MPI_COMM_WORLD);
+					}
+					#endif // DEBUG
+					break;
 				}
-				#endif // DEBUG
-				break;
 			}
 
 			#ifdef DEBUG
@@ -137,6 +142,7 @@ double lab1(const int* argc, char*** argv)
 			}
 			#endif // DEBUG
 
+			iterator++;
 			if (num % divider == 0)
 			{
 				isSimple = 0;
