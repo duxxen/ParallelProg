@@ -1,20 +1,31 @@
 #include "lab2.h"
 
-double lab2(const int* argc, char*** argv)
+int LR2::lab2(int argc, char* argv[])
 {
-	uint64_t num, half;
+	uint64_t num, end;
 	uint64_t divider = 0;
 	int64_t segment;
 
-	size_t threadCount = 16;
+	size_t threadCount = 4;
 	double timeStart, timeEnd;
 	double timeProcedure;
 
-	printf_s("Enter number: ");
-	scanf_s("%llu", &num);
+	if (argc > 2)
+	{
+		threadCount = strtoull(argv[1], NULL, 10);
+		num = strtoull(argv[2], NULL, 10);
+	}
+	else
+	{
+		printf_s("Enter number: ");
+		fflush(stdout);
+		scanf_s("%llu", &num);
+	}
+	printf_s("Threads num: %llu\n", threadCount);
+	printf_s("Number: %llu\n", num);
 
-	half = num / 2;
-	segment = half / threadCount;
+	end = sqrt(num);
+	segment = (end - 2) / threadCount;
 
 	omp_set_num_threads(threadCount);
 	timeStart = omp_get_wtime();
@@ -30,41 +41,22 @@ double lab2(const int* argc, char*** argv)
 			double timeProcStart = omp_get_wtime();
 
 			for (uint64_t div = start; div < end && !divider; div++)
-			{ 
+			{
 				if (!(num % div) != divider)
 				{
 					divider = div;
 					#pragma omp flush
 				}
-
-				#ifdef DEBUG
-				{
-					if (thread == 0)
-					{
-						double timeProc = omp_get_wtime();
-						if (timeProc - timeProcStart >= 5.f)
-						{
-							double progress = double(div - start) / segment * 100.0;
-							printf_s("[%d]: Process running... [%llu/%llu] (%.2f%%): %.2f\n", thread, div, end, progress, timeProc - timeStart);
-							timeProcStart = timeProc;
-						}
-					}
-				}
-				#endif
 			}
 		}
-
-		#ifdef DEBUG
-		printf("[%d]: finished! {%.2f}\n", thread, omp_get_wtime() - timeStart);
-		#endif
 	}
+	timeEnd = omp_get_wtime();
 
 	if (divider != 0)	printf_s("%llu is not simple!\nDivider: %llu\n", num, divider);
 	else				printf_s("%llu is simple!\n", num);
 
-	timeEnd = omp_get_wtime();
 	timeProcedure = timeEnd - timeStart;
 	printf_s("Time: %.2f", timeProcedure);
 
-	return timeProcedure;
+	return 0;
 }

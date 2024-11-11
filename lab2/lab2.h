@@ -1,8 +1,8 @@
 #pragma once
-#include <stdio.h>
-#include <stdint.h>
-#include <omp.h>
+#include "../common.h"
 
-#define DEBUG
-
-double lab2(const int* argc, char*** argv);
+namespace LR2
+{
+	#include <omp.h>
+	int lab2(int argc, char* argv[]);
+}
