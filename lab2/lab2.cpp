@@ -56,7 +56,7 @@ int LR2::lab2(int argc, char* argv[])
 	else				printf_s("%llu is simple!\n", num);
 
 	timeProcedure = timeEnd - timeStart;
-	printf_s("Time: %.2f", timeProcedure);
+	printf_s("Time: %f", timeProcedure);
 
 	return 0;
 }

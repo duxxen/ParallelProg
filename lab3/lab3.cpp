@@ -2,6 +2,7 @@
 
 namespace LR3
 {
+	
 	uint64_t number, segment;
 	uint64_t divider = 0;
 
