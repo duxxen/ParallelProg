@@ -15,159 +15,74 @@ using Vector = std::vector<double>;
 
 const double EPSILON = 1e-10;
 
-class Barrier {
-public:
-    explicit Barrier(size_t num_threads) : count(num_threads), original_count(num_threads) {}
-
-    void wait() {
-        std::unique_lock<std::mutex> lock(m);
-        if (--count == 0) {
-            count = original_count;
-            cv.notify_all();
-        } else {
-            cv.wait(lock, [this]() { return count == original_count; });
-        }
-    }
-
-private:
-    std::mutex m;
-    std::condition_variable cv;
-    size_t count;
-    size_t original_count;
-};
-
-void apply_givens_rotation(Matrix& A, Vector& b, int i, int k, int N) {
-    double a = A[i][k];
-    double b_ = A[k][k];
-
-    double r = sqrt(a * a + b_ * b_);
-    if (r < EPSILON) return;
-
-    double c = b_ / r;
-    double s = -a / r;
-
-    for (int j = k; j < N; ++j) {
-        double temp1 = c * A[k][j] - s * A[i][j];
-        double temp2 = s * A[k][j] + c * A[i][j];
-        A[k][j] = temp1;
-        A[i][j] = temp2;
-    }
-
-    double temp_b1 = c * b[k] - s * b[i];
-    double temp_b2 = s * b[k] + c * b[i];
-    b[k] = temp_b1;
-    b[i] = temp_b2;
+// Вычисление sin и cos для Гивенса
+void computeGivens(double a, double b, double& c, double& s) {
+    double r = hypot(a, b);
+    c = a / r;
+    s = -b / r;
 }
 
-void forward_elimination(Matrix& A, Vector& b, int num_threads) {
-    int N = A.size();
-    Barrier barrier(num_threads);
+// Применение поворота Гивенса к строкам i и j
+void applyGivens(Matrix& A, int i, int j, int col, double c, double s) {
+    for (int k = col; k < A[0].size(); ++k) {
+        double temp_i = c * A[i][k] - s * A[j][k];
+        double temp_j = s * A[i][k] + c * A[j][k];
+        A[i][k] = temp_i;
+        A[j][k] = temp_j;
+    }
+}
 
-    for (int k = 0; k < N - 1; ++k) {
-        auto worker = [&](int thread_id) {
-            for (int i = k + 1 + thread_id; i < N; i += num_threads) {
-                apply_givens_rotation(A, b, i, k, N);
+// Прямой ход (параллельный)
+void forwardElimination(Matrix& A, int num_threads) {
+    int n = A.size();
+    for (int j = 0; j < n - 1; ++j) {
+        auto worker = [&](int tid) {
+            for (int i = j + 1 + tid; i < n; i += num_threads) {
+                if (fabs(A[i][j]) > EPSILON) {
+                    double c, s;
+                    computeGivens(A[j][j], A[i][j], c, s);
+                    applyGivens(A, j, i, j, c, s);
+                }
             }
-            barrier.wait();
-        };
+            };
 
         std::vector<std::thread> threads;
         for (int t = 0; t < num_threads; ++t)
             threads.emplace_back(worker, t);
-
-        for (auto& t : threads)
-            t.join();
+        for (auto& th : threads)
+            th.join();
     }
 }
 
-void forward_elimination(Matrix& A, Vector& b) {
-    int N = A.size();
-    for (int k = 0; k < N - 1; ++k) {
-        for (int i = k + 1; i < N; ++i) {
-            if (fabs(A[i][k]) > EPSILON) {
-                apply_givens_rotation(A, b, i, k, N);
-            }
-        }
+// Обратный ход (последовательно)
+Vector backSubstitution(const Matrix& A) {
+    int n = A.size();
+    Vector x(n);
+    for (int i = n - 1; i >= 0; --i) {
+        double sum = A[i][n];
+        for (int j = i + 1; j < n; ++j)
+            sum -= A[i][j] * x[j];
+        x[i] = sum / A[i][i];
     }
-}
-
-Vector back_substitution(const Matrix& A, const Vector& b) {
-    int N = A.size();
-    Vector x(N, 0.0);
-
-    for (int i = N - 1; i >= 0; --i) {
-        x[i] = b[i];
-        for (int j = i + 1; j < N; ++j)
-            x[i] -= A[i][j] * x[j];
-        if (abs(A[i][i]) < EPSILON) throw std::runtime_error("Zero on diagonal");
-        x[i] /= A[i][i];
-    }
-
     return x;
 }
 
-void read_data(std::ifstream& fin, Matrix& mtr, Vector& vct) {
-    std::string         tempstr;
-    std::istringstream  inputstr;
-
-    std::getline(fin, tempstr);
-    inputstr = std::istringstream(tempstr);
-    auto size = std::count(tempstr.begin(), tempstr.end(), ' ') + 1;
-
-    vct.resize(size, 0.0);
-    mtr.resize(size, vct);
-
-    for (int i = 0; std::getline(inputstr, tempstr, ' '); i++) {
-        std::istringstream(tempstr) >> vct[i];
-    }
+void read_matrix(std::ifstream& fin, Matrix& mtr) {
+    std::string tempstr = "";
     for (int i = 0; std::getline(fin, tempstr); i++) {
-        inputstr = std::istringstream(tempstr);
-        for (int j = 0; std::getline(inputstr, tempstr, ' '); j++) {
+        if (i == 0) {
+            auto size = std::count(tempstr.begin(), tempstr.end(), ' ');
+            mtr.resize(size, Vector(size + 1, 0));
+        }
+
+        std::istringstream inputrow(tempstr);
+        for (int j = 0; std::getline(inputrow, tempstr, ' '); j++) {
             std::istringstream(tempstr) >> mtr[i][j];
         }
     }
 }
 
-int main(int argc, char* argv[]) {
-
-    if (argc < 3) {
-        std::cerr << "Not enough arguments!\n";
-        return -1;
-    }
-
-    int threads = 0;
-    std::istringstream(argv[2]) >> threads;
+int main(int argc, char* argv[])
+{
     
-    std::ifstream fin(argv[1]);
-
-    if (!fin.is_open()) {
-        std::cerr << "Cannot open the file " << argv[1] << "!\n";
-        return -2;
-    }
-
-    Matrix mtr;
-    Vector vct;
-    read_data(fin, mtr, vct);
-
-    auto tbeg = std::chrono::system_clock::now();
-    if (threads) {
-        std::cout << "forward parallel\n";
-        forward_elimination(mtr, vct, threads);
-    }
-    else {
-        std::cout << "forward sequential\n";
-        forward_elimination(mtr, vct);
-    }
-    try {
-        back_substitution(mtr, vct);
-    }
-    catch (std::runtime_error e) {
-        std::cerr << e.what() << std::endl;
-        return -3;
-    }
-    auto tend = std::chrono::system_clock::now();
-    auto tdur = std::chrono::duration_cast<std::chrono::milliseconds>(tend - tbeg).count();
-    std::cout << "Time: " << tdur << std::endl;
-
-    return 0;
 }
